@@ -106,16 +106,15 @@ def main():
 
     if args.predict_only:
     # Load model from checkpoint
-        print(model.drn.datanorm.shape)
+        #print(model.drn.datanorm.shape)
         checkpoint = torch.load(f"{outfolder}/checkpoints/model_best.tar", map_location=device)
         model.load_state_dict(checkpoint['model_state_dict'])
         model.to(device)
-        print(model.drn.datanorm.shape)
-        print(data_handler.features[0].x.shape)
+        #print(data_handler.features[0].x.shape)
         #print(type(data_handler.features[0]))
-        #test_loader=DataLoader(data_handler.features , batch_size=args.batch_size, shuffle=False)
+        test_loader=DataLoader(data_handler.features , batch_size=args.batch_size, shuffle=False)
 
-        predM, predClass = run_inference(model, train_loader, device)
+        predM, predClass = run_inference(model, test_loader, device)
 
         with open("predM.pickle", "wb") as f:
             pickle.dump(predM.numpy(), f)

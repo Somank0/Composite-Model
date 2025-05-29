@@ -62,7 +62,8 @@ class CompositeDRNTrainer:
             # Forward
             #batch_output = self.model(batch, batch_params)
             batch_output = self.model(batch)
-            batch_loss = acc_norm * self.loss_func(batch_output, batch_target, weight=cat_weights)
+            #batch_loss = acc_norm * self.loss_func(batch_output, batch_target, weight=cat_weights)
+            batch_loss = acc_norm * self.loss_func(batch_output, batch_target)
             #print(f"Model output : {batch_output}")
 
 

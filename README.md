@@ -2,7 +2,7 @@
 
 This is a composite network that uses a DRN and a classifier. 
 
-This model was used for reconstructing the mass of pseudoscalar (_a_) in _a_ &rarr $\gamma$ $\gamma$ samples.
+This model was used for reconstructing the mass of pseudoscalar (_a_) in _a_ &rarr; $\gamma$ $\gamma$ samples.
 
 The output from the DRN and the true/fake value of the target are inputs to the classifier. The classifier, based on the DRN output, should predict if the target value is true or fake.
 

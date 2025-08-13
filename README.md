@@ -39,7 +39,7 @@ The DNN can be used to regress the mass from the output of the Composite DRN.
 
 ### Pickles for DNN regression
 
-> In the pickle maker, run the ***convert_pickle_to_tensor.py*** to convert the output of the Composite DRN into a pytorch tensor and create a trainining - validation split.
+In the pickle maker, run the ***convert_pickle_to_tensor.py*** to convert the output of the Composite DRN into a pytorch tensor and create a trainining - validation split.
 
 ### Training DNN
 
@@ -62,3 +62,5 @@ For inference :
 It is advisable to write the logs from the training and prediction into a .log file.
 
 The training process automatically creates a summary.npz file that stores the training and validation losses at each epoch.
+
+The details of setting the conda environment for DRN is given in ***README_ENV.md***.

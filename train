@@ -1,0 +1,174 @@
+#!/usr/bin/env python3
+
+import pickle
+import torch
+import torch.nn.functional as F
+from torch_geometric.data import DataLoader
+import argparse
+from Composite_Models import *
+from Train_Composite_Network import *
+from DataHandler import *
+
+
+def get_data_loaders(train_dataset, val_dataset, batch_size=32, num_workers=4):
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+    return train_loader, val_loader
+
+def main():
+    parser = argparse.ArgumentParser(description='Train CompositeDRN model')
+
+    # Model hyperparameters
+    parser.add_argument('--data_folder', type=str, default='../')
+    parser.add_argument('--idx_name', type=str, default='all')
+    #parser.add_argument('--drn_input_dim', type=int, default=4)
+    parser.add_argument('--drn_hidden_dim', type=int, default=64)
+    parser.add_argument('--in_layers', type=int, default=3)
+    parser.add_argument('--out_layers', type=int, default=2)
+    parser.add_argument('--agg_layers', type=int, default=2)
+    parser.add_argument('--mp_layers', type=int, default=3)
+    parser.add_argument('--drn_output_dim', type=int, default=1)
+    parser.add_argument('--aux_param_dim', type=int, default=1)
+    parser.add_argument('--graph_features', type=str, nargs = "+", default = [])
+    parser.add_argument('--coords', type=str, default='cart', choices=['cart', 'proj', 'local'])
+    parser.add_argument('--weights_name', type=str, default= None)
+    parser.add_argument('--target', type=str, default='trueclass',help='Name of training target.\n\tTarget should be in <data_folder>/<target>_target.pickle')
+    parser.add_argument('--aux_hidden_node_counts', nargs='+', type=int, default=[64, 32])
+    parser.add_argument('--aux_activ', type=str, default='relu')
+    parser.add_argument('--predict_only', action='store_true', help='Run inference using model_best.tar')
+    # Training hyperparameters
+    parser.add_argument('--batch_size', type=int, default=10)
+    parser.add_argument('--learning_rate', type=float, default=0.0001)
+    parser.add_argument('--num_epochs', type=int, default=10)
+
+    args = parser.parse_args()
+
+    # Device
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    # Datasets
+    data_handler = DataHandler(
+        data_folder=args.data_folder,
+        idx_name=args.idx_name,
+        coords=args.coords,
+        target=args.target,
+        graph_features=args.graph_features,
+        weights_name=args.weights_name,
+        ES='No',
+        valid_batch_size=args.batch_size,
+    )
+    data_handler.loadValidIdx()
+    data_handler.loadWeights()
+    data_handler.loadFeatures(predict=False)
+
+    train_data = [data_handler.features[i] for i in data_handler.train_idx]
+    valid_data = [data_handler.features[i] for i in data_handler.valid_idx]
+
+    train_loader = DataLoader(train_data, batch_size=args.batch_size, shuffle=True)
+    val_loader = DataLoader(valid_data, batch_size=args.batch_size, shuffle=False)
+
+    #train_loader, val_loader = get_data_loaders(TrainDataset(), ValDataset(), batch_size=args.batch_size)
+    drn_input_dim= train_data[0].x.shape[1]
+    # Model
+    model = CompositeDRN(
+        drn_input_dim=drn_input_dim,
+        drn_hidden_dim=args.drn_hidden_dim,
+        mp_layers=args.mp_layers,
+        agg_layers=args.agg_layers,
+        in_layers=args.in_layers,
+        out_layers=args.out_layers,
+        drn_output_dim=args.drn_output_dim,
+        aux_param_dim=args.aux_param_dim,
+        aux_hidden_node_counts=args.aux_hidden_node_counts,
+        aux_activ=args.aux_activ,
+
+        #aux_param_name=args.target
+    )
+
+    # Optimizer and scheduler
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
+    #scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
+    lambda_lr = lambda epoch: 1.0
+    scheduler =  torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda_lr)
+
+
+    # Trainer
+    trainer = CompositeDRNTrainer(
+        model=model,
+        optimizer=optimizer,
+        device=device,
+        loss_func=F.binary_cross_entropy,
+        lr_scheduler=scheduler,
+        #lr_sched_type='StepLR',
+        acc_rate=1,
+        category_weights=torch.tensor([1.0, 1.0]),
+        logger=print
+    )
+    
+    train_losses = []
+    val_losses = []
+    epochs=[]
+    best_val_loss = float('inf')
+    outfolder= args.data_folder
+    os.makedirs(outfolder + "/checkpoints", exist_ok=True)
+
+    if args.predict_only:
+    # Load model from checkpoint
+        #print(model.drn.datanorm.shape)
+        model = torch.nn.DataParallel(model)
+        model.to(device)
+        checkpoint = torch.load(f"{outfolder}/checkpoints/model_best.tar", map_location=device)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        #print(data_handler.features[0].x.shape)
+        #print(type(data_handler.features[0]))
+        test_loader=DataLoader(data_handler.features , batch_size=args.batch_size, shuffle=False)
+
+        predM, predClass = run_inference(model, test_loader, device)
+
+        with open(f"predV_{self.output_dim}dim.pickle", "wb") as f:
+            pickle.dump(predM.numpy(), f)
+
+        with open("predClass.pickle", "wb") as f:
+            pickle.dump(predClass.numpy(), f)
+
+    else :
+    # Training loop
+        for epoch in range(args.num_epochs):
+            print(f"Epoch {epoch+1}/{args.num_epochs}")
+            train_summary = trainer.train_epoch(train_loader)
+            val_summary = trainer.evaluate(val_loader)
+
+            val_loss=val_summary['valid_loss']
+
+            model_path = f"{outfolder}/checkpoints/model_epoch_{epoch}.tar"
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': trainer.model.state_dict(),
+                'optimizer_state_dict': trainer.optimizer.state_dict(),
+                'train_loss': train_summary['train_loss'],
+                'valid_loss': val_loss,
+            }, model_path)
+
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                torch.save({
+                    'epoch': epoch,
+                    'model_state_dict': trainer.model.state_dict(),
+                    'optimizer_state_dict': trainer.optimizer.state_dict(),
+                    'train_loss': train_summary['train_loss'],
+                    'valid_loss': val_loss,
+                },f"{outfolder}/checkpoints/model_best.tar")
+
+            train_losses.append(train_summary['train_loss'])
+            val_losses.append(val_summary['valid_loss'])
+            epochs.append(epoch + 1)
+            summary_path =  os.path.join(outfolder, 'summary.npz')
+            np.savez(summary_path,
+             epoch=np.array(epochs),
+             train_loss=np.array(train_losses),
+             val_loss=np.array(val_losses))
+    
+
+if __name__ == '__main__':
+    main()
+

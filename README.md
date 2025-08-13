@@ -1,4 +1,4 @@
-## CompositeDRN
+## CompositeDRN for $a$ &rarr; $\gamma$ $\gamma$
 
 This is a composite network that uses a DRN and a classifier. 
 

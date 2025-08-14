@@ -125,7 +125,7 @@ def main():
 
         predM, predClass = run_inference(model, test_loader, device)
 
-        with open(f"predV_{self.output_dim}dim.pickle", "wb") as f:
+        with open(f"predV.pickle", "wb") as f:
             pickle.dump(predM.numpy(), f)
 
         with open("predClass.pickle", "wb") as f:
